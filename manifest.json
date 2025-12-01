@@ -1,0 +1,22 @@
+{
+  "name": "Gmail Reply Generator (Gemini)",
+  "description": "Injects toggle + Generate Reply buttons into Gmail and uses Gemini (user-provided key) to create replies.",
+  "version": "1.0",
+  "manifest_version": 3,
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://mail.google.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gmail Reply Generator"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
