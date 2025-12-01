@@ -12,7 +12,7 @@ Content script:
 
   const BUTTON_CONTAINER_ID = "grg-button-container";
   const LOGS_STORAGE_KEY = "grg_logs";
-  const MAX_LOGS = 1000; // Maximum number of logs to keep
+  const MAX_LOGS = 1000; // Maximum number of logs to keep  
 
   // Helper function to check if extension context is valid
   function isExtensionContextValid() {

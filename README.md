@@ -108,10 +108,6 @@ This extension uses:
 - Chrome Extension APIs (storage, scripting, activeTab)
 - Google Gemini API
 
-## License
-
-[Add your license here]
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
