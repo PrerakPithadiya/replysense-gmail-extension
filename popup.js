@@ -4,33 +4,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const model = document.getElementById("model");
   const maxTokens = document.getElementById("maxTokens");
   const toneMode = document.getElementById("toneMode");
+  const loggingEnabled = document.getElementById("loggingEnabled");
   const saveBtn = document.getElementById("saveBtn");
   const clearBtn = document.getElementById("clearBtn");
-  const clearLogsBtn = document.getElementById("clearLogsBtn");
-  const logsContainer = document.getElementById("logsContainer");
-
-  // Tab switching
-  const tabButtons = document.querySelectorAll(".tab-btn");
-  const tabContents = document.querySelectorAll(".tab-content");
-  
-  tabButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      const targetTab = btn.getAttribute("data-tab");
-      
-      // Update buttons
-      tabButtons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      
-      // Update content
-      tabContents.forEach(c => c.classList.remove("active"));
-      document.getElementById(`${targetTab}-tab`).classList.add("active");
-      
-      // Load logs when switching to logs tab
-      if (targetTab === "logs") {
-        loadLogs();
-      }
-    });
-  });
+  const downloadLogsBtn = document.getElementById("downloadLogsBtn");
 
   // Load stored values
   chrome.storage.local.get(["apiBase", "apiKey", "model", "maxTokens", "toneMode"], (res) => {
@@ -39,6 +16,29 @@ document.addEventListener("DOMContentLoaded", () => {
     if (res.model) model.value = res.model;
     if (res.maxTokens) maxTokens.value = res.maxTokens;
     if (res.toneMode) toneMode.value = res.toneMode;
+  });
+
+  // Load logging enabled state (from sync storage for persistence)
+  chrome.storage.sync.get(["loggingEnabled"], (res) => {
+    loggingEnabled.checked = res.loggingEnabled !== false; // Default to true
+  });
+
+  // Handle logging toggle change
+  loggingEnabled.addEventListener("change", () => {
+    const enabled = loggingEnabled.checked;
+    chrome.storage.sync.set({ loggingEnabled: enabled }, () => {
+      // Notify content script about the change
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            type: "LOGGING_TOGGLE",
+            enabled: enabled
+          }).catch(() => {
+            // Ignore errors if content script isn't ready
+          });
+        }
+      });
+    });
   });
 
   saveBtn.addEventListener("click", () => {
@@ -50,10 +50,13 @@ document.addEventListener("DOMContentLoaded", () => {
       toneMode: toneMode.value
     };
     chrome.storage.local.set(toSave, () => {
-      alert("Settings saved locally.");
-      // clear password field visually but keep it in storage
-      apiKey.value = "••••••••";
-      setTimeout(() => apiKey.value = "", 400);
+      // Also save logging state
+      chrome.storage.sync.set({ loggingEnabled: loggingEnabled.checked }, () => {
+        alert("Settings saved locally.");
+        // clear password field visually but keep it in storage
+        apiKey.value = "••••••••";
+        setTimeout(() => apiKey.value = "", 400);
+      });
     });
   });
 
@@ -64,105 +67,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Load and display logs (categorized)
-  function loadLogs() {
-    chrome.storage.local.get(["grg_logs"], (res) => {
-      const logs = res.grg_logs || [];
-      
-      if (logs.length === 0) {
-        logsContainer.innerHTML = '<p style="text-align: center; color: #666; margin: 20px 0;">No logs yet. Activity will appear here.</p>';
-        return;
+  downloadLogsBtn.addEventListener("click", () => {
+    // Send message to background to download logs
+    chrome.runtime.sendMessage({ type: "DOWNLOAD_LOGS" }, (response) => {
+      if (chrome.runtime.lastError) {
+        alert("Error downloading logs: " + chrome.runtime.lastError.message);
+      } else if (response && response.ok) {
+        alert("Logs downloaded successfully!");
+      } else {
+        alert("Error downloading logs: " + (response?.error || "Unknown error"));
       }
-      
-      // Separate logs by type
-      const extensionLogs = logs.filter(log => log.type === 'extension');
-      const replyLogs = logs.filter(log => log.type === 'reply');
-      
-      let html = '';
-      
-      // Extension Logs Section
-      if (extensionLogs.length > 0) {
-        html += '<div style="margin-bottom: 20px;"><h4 style="margin: 0 0 10px 0; font-size: 14px; color: #333; font-weight: bold;">Extension Logs</h4>';
-        html += extensionLogs.map(log => {
-          const actionLabel = {
-            'enabled': 'Extension Enabled',
-            'disabled': 'Extension Disabled'
-          }[log.action] || log.action;
-          
-          const typeClass = `extension-${log.action}`;
-          const icon = {
-            'enabled': '✓',
-            'disabled': '✗'
-          }[log.action] || '•';
-          
-          return `
-            <div class="log-entry ${typeClass}" style="margin-bottom: 8px;">
-              <div class="log-time">${log.date} at ${log.time}</div>
-              <div class="log-action">${icon} ${actionLabel}</div>
-              ${log.details && log.details.threadId ? `<div class="log-details">Thread: ${log.details.threadId.substring(0, 20)}...</div>` : ''}
-            </div>
-          `;
-        }).join('');
-        html += '</div>';
-      }
-      
-      // Reply Logs Section
-      if (replyLogs.length > 0) {
-        html += '<div><h4 style="margin: 0 0 10px 0; font-size: 14px; color: #333; font-weight: bold;">Reply Logs</h4>';
-        html += replyLogs.map(log => {
-          const actionLabel = {
-            'generated': 'Reply Generated',
-            'accepted': 'Reply Accepted',
-            'rejected': 'Reply Rejected'
-          }[log.action] || log.action;
-          
-          const typeClass = `reply-${log.action}`;
-          const icon = {
-            'generated': '⚡',
-            'accepted': '✓',
-            'rejected': '✗'
-          }[log.action] || '•';
-          
-          let detailsText = '';
-          if (log.details) {
-            const parts = [];
-            if (log.details.replyLength) parts.push(`Length: ${log.details.replyLength} chars`);
-            if (log.details.threadId) parts.push(`Thread: ${log.details.threadId.substring(0, 15)}...`);
-            if (parts.length > 0) detailsText = parts.join(' • ');
-          }
-          
-          return `
-            <div class="log-entry ${typeClass}" style="margin-bottom: 8px;">
-              <div class="log-time">${log.date} at ${log.time}</div>
-              <div class="log-action">${icon} ${actionLabel}</div>
-              ${detailsText ? `<div class="log-details">${detailsText}</div>` : ''}
-            </div>
-          `;
-        }).join('');
-        html += '</div>';
-      }
-      
-      if (html === '') {
-        html = '<p style="text-align: center; color: #666; margin: 20px 0;">No logs yet. Activity will appear here.</p>';
-      }
-      
-      logsContainer.innerHTML = html;
     });
-  }
-
-  // Clear all logs
-  clearLogsBtn.addEventListener("click", () => {
-    if (confirm("Are you sure you want to clear all logs? This action cannot be undone.")) {
-      chrome.storage.local.set({ grg_logs: [] }, () => {
-        loadLogs();
-        alert("All logs cleared.");
-      });
-    }
   });
-
-  // Load logs on initial page load if on logs tab
-  if (document.getElementById("logs-tab").classList.contains("active")) {
-    loadLogs();
-  }
 });
 

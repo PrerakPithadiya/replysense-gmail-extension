@@ -3,7 +3,7 @@
   "description": "Injects toggle + Generate Reply buttons into Gmail and uses Gemini (user-provided key) to create replies.",
   "version": "1.0",
   "manifest_version": 3,
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "downloads"],
   "host_permissions": ["https://mail.google.com/*"],
   "background": {
     "service_worker": "background.js"

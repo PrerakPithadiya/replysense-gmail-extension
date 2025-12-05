@@ -7,55 +7,43 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="settings">Settings</button>
-      <button class="tab-btn" data-tab="logs">Activity Logs</button>
-    </div>
-    
-    <div id="settings-tab" class="tab-content active">
-      <div class="container">
-        <h3>Gmail Reply Generator</h3>
-        <label>API Base URL</label>
-        <input id="apiBase" placeholder="https://generativelanguage.googleapis.com/v1beta" />
-        <label>API Key</label>
-        <input id="apiKey" type="password" placeholder="Paste your API key here (saved in extension)" />
-        <label>Model</label>
-        <select id="model">
-          <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-          <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-          <option value="gemini-2.5-pro" selected>gemini-2.5-pro</option>
-          <option value="gemini-2.0-pro">gemini-2.0-pro</option>
-          <option value="gemini-pro">gemini-pro (older)</option>
-        </select>
-        <label>Default max tokens</label>
-        <input id="maxTokens" type="number" min="512" max="8192" value="4096" />
-        <p class="note" style="font-size: 10px; margin-top: 4px;">Note: gemini-2.5-pro uses "thinking tokens" that count toward this limit. Use 4096+ for best results.</p>
-        <label>Reply Tone</label>
-        <select id="toneMode">
-          <option value="match" selected>Match tone (default)</option>
-          <option value="friendly">More friendly</option>
-          <option value="concise">More concise</option>
-          <option value="professional">More professional</option>
-        </select>
-        <div class="buttons">
-          <button id="saveBtn">Save</button>
-          <button id="clearBtn">Clear Key</button>
-        </div>
-        <p class="note">Enter your API Base & Key here. Key is stored locally in the extension only.</p>
+    <div class="container">
+      <h3>Gmail Reply Generator</h3>
+      <label>API Base URL</label>
+      <input id="apiBase" placeholder="https://generativelanguage.googleapis.com/v1beta" />
+      <label>API Key</label>
+      <input id="apiKey" type="password" placeholder="Paste your API key here (saved in extension)" />
+      <label>Model</label>
+      <select id="model">
+        <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+        <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+        <option value="gemini-2.5-pro" selected>gemini-2.5-pro</option>
+        <option value="gemini-2.0-pro">gemini-2.0-pro</option>
+        <option value="gemini-pro">gemini-pro (older)</option>
+      </select>
+      <label>Default max tokens</label>
+      <input id="maxTokens" type="number" min="512" max="8192" value="4096" />
+      <p class="note" style="font-size: 10px; margin-top: 4px;">Note: gemini-2.5-pro uses "thinking tokens" that count toward this limit. Use 4096+ for best results.</p>
+      <label>Reply Tone</label>
+      <select id="toneMode">
+        <option value="match" selected>Match tone (default)</option>
+        <option value="friendly">More friendly</option>
+        <option value="concise">More concise</option>
+        <option value="professional">More professional</option>
+      </select>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
+        <input type="checkbox" id="loggingEnabled" style="margin: 0;" />
+        <label for="loggingEnabled" style="margin: 0; font-weight: normal;">Enable Activity Logging</label>
       </div>
-    </div>
-    
-    <div id="logs-tab" class="tab-content">
-      <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3 style="margin: 0;">Activity Logs</h3>
-          <button id="clearLogsBtn" style="padding: 6px 12px; font-size: 12px;">Clear All Logs</button>
-        </div>
-        <div id="logsContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px;">
-          <p style="text-align: center; color: #666; margin: 20px 0;">Loading logs...</p>
-        </div>
-        <p class="note" style="margin-top: 8px; font-size: 11px;">Logs show extension enable/disable actions and reply generation activity.</p>
+      <p class="note" style="font-size: 10px; margin-top: 4px;">When enabled, all extension activities will be logged. Logs persist across extension reloads. Use "Download Logs" before uninstalling to save permanently.</p>
+      <div class="buttons">
+        <button id="saveBtn">Save</button>
+        <button id="clearBtn">Clear Key</button>
       </div>
+      <div class="buttons" style="margin-top: 8px;">
+        <button id="downloadLogsBtn" style="background: #34a853; color: white; border: 1px solid #34a853;">Download Logs</button>
+      </div>
+      <p class="note">Enter your API Base & Key here. Key is stored locally in the extension only.</p>
     </div>
     
     <script src="popup.js"></script>

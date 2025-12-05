@@ -2,6 +2,35 @@
 // It reads apiBase, apiKey, and model from chrome.storage and calls the configured Gemini endpoint.
 // IMPORTANT: Do NOT hardcode your API key. Put it in the extension popup (chrome.storage.local).
 
+// Handle extension install/update - migrate logs and set defaults
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === 'install') {
+    // First install - set default logging to enabled
+    await chrome.storage.sync.set({ loggingEnabled: true });
+  } else if (details.reason === 'update') {
+    // On update, migrate logs from local to sync storage if they exist
+    try {
+      const localData = await chrome.storage.local.get(["grg_logs"]);
+      const syncData = await chrome.storage.sync.get(["grg_logs"]);
+      
+      // If sync has no logs but local does, migrate them
+      if (localData.grg_logs && localData.grg_logs.length > 0 && (!syncData.grg_logs || syncData.grg_logs.length === 0)) {
+        await chrome.storage.sync.set({ grg_logs: localData.grg_logs });
+        console.log("Gmail Reply Generator: Migrated logs from local to sync storage");
+      }
+    } catch (error) {
+      console.error("Gmail Reply Generator: Error migrating logs:", error);
+    }
+  }
+});
+
+// Note: Chrome extensions cannot directly detect uninstall events.
+// Users should use the "Download Logs" button before uninstalling to save their logs permanently.
+// Logs stored in chrome.storage.sync will persist across extension reloads but will be lost on uninstall.
+
+// Listen for uninstall (we can't directly detect uninstall, but we can set an uninstall URL)
+// Note: This requires a hosted page. For now, we'll add a download logs feature.
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === "GENERATE_REPLY") {
     // message.payload: { prompt: string, maxTokens?: number }
@@ -12,6 +41,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const errorMessage = err && err.message ? err.message : (typeof err === 'string' ? err : String(err));
       console.error("Gmail Reply Generator: Generate error:", errorMessage, err);
       sendResponse({ ok: false, error: errorMessage });
+    });
+    // Indicate async response
+    return true;
+  }
+  
+  if (message && message.type === "CHECK_CONNECTION") {
+    // Test connection by making a minimal API call
+    checkConnection().then((result) => {
+      sendResponse({ ok: true, message: result });
+    }).catch((err) => {
+      const errorMessage = err && err.message ? err.message : (typeof err === 'string' ? err : String(err));
+      console.error("Gmail Reply Generator: Connection check error:", errorMessage, err);
+      sendResponse({ ok: false, error: errorMessage });
+    });
+    // Indicate async response
+    return true;
+  }
+  
+  if (message && message.type === "DOWNLOAD_LOGS") {
+    // Download logs as JSON file
+    downloadLogs().then(() => {
+      sendResponse({ ok: true });
+    }).catch((err) => {
+      console.error("Gmail Reply Generator: Download logs error:", err);
+      sendResponse({ ok: false, error: err.message || String(err) });
     });
     // Indicate async response
     return true;
@@ -214,4 +268,133 @@ async function generateReply(payload) {
   }
   
   throw new Error(`Could not extract reply text from API response. Response format may have changed. Check the browser console for the full response.`);
+}
+
+// Connection check function - makes a minimal test request to verify API connectivity
+async function checkConnection() {
+  const stored = await chrome.storage.local.get(["apiBase", "apiKey", "model"]);
+  const apiBase = (stored.apiBase || "").trim();
+  const apiKey = (stored.apiKey || "").trim();
+  const model = stored.model || "gemini-2.5-pro";
+
+  // Validate configuration
+  if (!apiBase) {
+    throw new Error("API base URL not set. Click the extension icon and configure it in the popup.");
+  }
+  if (!apiKey) {
+    throw new Error("API key not set. Click the extension icon and configure it in the popup.");
+  }
+
+  console.log("Gmail Reply Generator: Checking connection with model:", model);
+
+  // Detect if this is Google's official Gemini API
+  const isGoogleGemini = apiBase.includes("generativelanguage.googleapis.com");
+  
+  let url, body, headers;
+  
+  if (isGoogleGemini) {
+    // Google Gemini API format
+    const base = apiBase.replace(/\/$/, "");
+    url = `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    
+    body = {
+      contents: [{
+        parts: [{ text: "test" }]
+      }],
+      generationConfig: {
+        maxOutputTokens: 10
+      }
+    };
+    
+    headers = {
+      "Content-Type": "application/json"
+    };
+  } else {
+    // Generic/other provider format
+    const base = apiBase.replace(/\/$/, "");
+    url = `${base}/models/${encodeURIComponent(model)}:generate`;
+    body = {
+      prompt: "test",
+      max_output_tokens: 10
+    };
+    headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    };
+  }
+
+  console.log("Gmail Reply Generator: Testing connection to:", url);
+  
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body),
+    });
+  } catch (fetchError) {
+    const errorMsg = fetchError.message || String(fetchError);
+    if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
+      throw new Error(`Cannot connect to API. Check:\n1. API Base URL is correct: ${apiBase}\n2. You have internet connection\n3. The API endpoint allows requests from browser extensions\n\nFull error: ${errorMsg}`);
+    }
+    throw fetchError;
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("Gmail Reply Generator: Connection check API error:", res.status, text);
+    
+    // Try to parse error JSON for better error messages
+    let errorMessage = `API returned ${res.status}`;
+    try {
+      const errorJson = JSON.parse(text);
+      if (errorJson.error && errorJson.error.message) {
+        errorMessage = errorJson.error.message;
+        if (errorMessage.includes("is not found") || errorMessage.includes("not supported")) {
+          errorMessage += `\n\nTry using "gemini-1.5-pro" or "gemini-1.5-flash" instead. Update the model in the extension popup settings.`;
+        }
+      } else if (errorJson.error) {
+        errorMessage = JSON.stringify(errorJson.error);
+      }
+    } catch (e) {
+      errorMessage = text.substring(0, 300);
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  // If we get here, connection is successful
+  console.log("Gmail Reply Generator: Connection check successful");
+  return "Connection successful. All systems ready.";
+}
+
+// Download logs as JSON file
+async function downloadLogs() {
+  try {
+    // Get logs from sync storage
+    const result = await chrome.storage.sync.get(["grg_logs"]);
+    const logs = result.grg_logs || [];
+    
+    // Create JSON content
+    const jsonContent = JSON.stringify(logs, null, 2);
+    
+    // Create a data URL
+    const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonContent);
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `gmail-reply-generator-logs-${timestamp}.json`;
+    
+    // Download the file using chrome.downloads API
+    await chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: true
+    });
+    
+    console.log("Gmail Reply Generator: Logs downloaded successfully");
+  } catch (error) {
+    console.error("Gmail Reply Generator: Failed to download logs:", error);
+    throw error;
+  }
 }
